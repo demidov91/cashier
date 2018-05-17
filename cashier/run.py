@@ -1,32 +1,41 @@
 import asyncio
+import logging
 import re
 import sys
 import itertools
 
-from cashier.db import closing_connection, fetch_all_phones
-from cashier.notifications import warning
-from cashier.constants import STATE_READY, STATE_UPLOADED
+from aiohttp.client import ClientSession
+from cashier.db import closing_connection, fetch_phones, get_one_token
+from cashier.notifications import warning, feedback
+from cashier.connector import auth as remote_auth, upload_task
+from cashier.constants import (
+    STATE_READY,
+    STATE_UPLOADED,
+    UPLOAD_CONCURRENCY,
+)
 
 
+logger = logging.getLogger(__name__)
 phone_pattern = re.compile('(\+\d{12})')
 argv_pattern = re.compile('--(?P<key>.*?)=(?P<value>.*)')
 
 
-async def login(email: str, password: str) -> str:
-    pass
+async def auth(email: str, password: str) -> str:
+    token = await remote_auth(email, password)
+    await add_user_into_db(email, token)
+    return token
 
 
-async def remote_login(email: str, password: str) -> str:
-    pass
-
-
-async def add_user(email: str, password: str) -> str:
-    pass
+async def add_user_into_db(email: str, token: str) -> str:
+    with closing_connection() as conn:
+        with conn as cur:
+            cur.execute('INSERT OR IGNORE INTO users (email) VALUES (?)', (email, ))
+            cur.execute('UPDATE users SET token=? WHERE email=?', (token, email))
 
 
 async def upload_file(path: str) -> int:
     phones = []
-    existing_phones = set(fetch_all_phones())
+    existing_phones = set(await fetch_phones())
 
     with open(path, mode='r') as f:
         for line in f.readlines():
@@ -68,17 +77,42 @@ async def db_state() -> dict:
     return info
 
 
-async def start_uploading():
-    pass
+async def start_uploading(token=None):
+    if token is None:
+        token = await get_one_token()
+
+    if token is None:
+        raise ValueError('Token is not defined.')
+
+    phones = list(await fetch_phones(state=STATE_READY))
+
+    async with ClientSession(headers={'Authorization': f'Bearer {token}'}) as client:
+        tasks = [upload_task(client, phones, feedback) for _ in range(UPLOAD_CONCURRENCY)]
+        watcher = asyncio.ensure_future(_watch_phones(phones))
+        await asyncio.gather(*tasks)
+        watcher.cancel()
+
+
+async def _watch_phones(phones):
+    while len(phones) > 0:
+        await feedback('{} left to upload'.format(len(phones)))
+        await asyncio.sleep(1)
 
 
 async def create_db():
     with closing_connection() as conn:
         with conn as cur:
             cur.execute(
-                'CREATE TABLE phones ('
+                'CREATE TABLE IF NOT EXISTS phones ('
                 'phone char(13) NOT NULL PRIMARY KEY, '
                 'state char(15) NOT NULL'
+                ') without rowid;'
+            )
+
+            cur.execute(
+                'CREATE TABLE IF NOT EXISTS users ('
+                'email char(127) NOT NULL PRIMARY KEY, '
+                'token varchar(127) NULL'
                 ') without rowid;'
             )
 
@@ -107,8 +141,21 @@ def run():
         print(loop.run_until_complete(db_state()))
         return
 
+    if method == 'auth':
+        print('Token {} is stored in db.'.format(loop.run_until_complete(
+            auth(kwargs['email'], kwargs['password'])
+        )))
+        return
+
+    if method == 'start_uploading':
+        loop.run_until_complete(
+            start_uploading(kwargs.get('token'))
+        )
+        return
+
     print(f'Method {method} was not found.')
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
     run()
