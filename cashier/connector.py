@@ -9,8 +9,7 @@ from cashier.constants import (
     LOGIN_URL,
     PURCHASE_URL,
     USER_INFO_URL,
-    ADMIN_SITE,
-    ADMIN_LOGIN_URL,
+    ADMIN_LOGIN_FULL_URL,
 )
 from cashier.db import mark_as_uploaded
 
@@ -95,9 +94,9 @@ class AdminConnector:
         self.client.close()
         
     async def auth(email, password):
-        async with self.client.post(ADMIN_SITE + ADMIN_LOGIN_URL, data={
+        async with self.client.post(ADMIN_LOGIN_FULL_URL, data={
             'email': email,
-            'password', password,
+            'password': password,
         }) as resp:
             if resp.status != 302:
                 raise ValueError(f'302 expected got {resp.status}')
