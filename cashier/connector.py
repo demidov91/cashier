@@ -9,6 +9,8 @@ from cashier.constants import (
     LOGIN_URL,
     PURCHASE_URL,
     USER_INFO_URL,
+    ADMIN_SITE,
+    ADMIN_LOGIN_URL,
 )
 from cashier.db import mark_as_uploaded
 
@@ -77,6 +79,35 @@ async def register_payment(client, phone) -> int:
         return int(data['id'])
 
 
-
-
-
+class AdminConnector:
+    def __init__(self, feedback, token: str=None):
+        self.feedback = feedback
+        self.client = ClientSession()
+        self.token = token
+        
+    async def __ienter__(self):
+        return self
+    
+    async def __iexit__(self):
+        await self.close()
+        
+    async def close(self):
+        self.client.close()
+        
+    async def auth(email, password):
+        async with self.client.post(ADMIN_SITE + ADMIN_LOGIN_URL, data={
+            'email': email,
+            'password', password,
+        }) as resp:
+            if resp.status != 302:
+                raise ValueError(f'302 expected got {resp.status}')
+               
+            step_2_url = resp.headers['Location']
+            
+        async with self.client.get(step_2_url) as resp:            
+            if resp.status != 302:
+                raise ValueError(f'302 expected got {resp.status}')
+               
+            self.token = resp.headers['Location']
+            
+        return self.token
