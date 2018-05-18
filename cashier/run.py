@@ -98,6 +98,14 @@ async def _watch_phones(phones):
         await feedback('{} left to upload'.format(len(phones)))
         await asyncio.sleep(1)
 
+
+async def admin_auth(email, password):
+    async with AdminConnector(feedback) as client:
+        token = await client.auth()
+    
+    await add_admin_into_db(email, token) 
+   
+
         
 def run():
     method = sys.argv[1]
