@@ -105,7 +105,8 @@ async def create_db():
             cur.execute(
                 'CREATE TABLE IF NOT EXISTS phones ('
                 'phone char(13) NOT NULL PRIMARY KEY, '
-                'state char(15) NOT NULL'
+                'state char(15) NOT NULL, '
+                'purchase_id INTEGER NULL'
                 ') without rowid;'
             )
 

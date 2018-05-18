@@ -1,14 +1,16 @@
 import logging
+from typing import Optional
 
 from aiohttp.client import ClientSession
 
 from cashier.constants import (
     CASHIER_SITE,
+    DEFAULT_REGISTRATION_AMOUNT,
     LOGIN_URL,
+    PURCHASE_URL,
     USER_INFO_URL,
 )
 from cashier.db import mark_as_uploaded
-from cashier.notifications import warning
 
 
 logger = logging.getLogger(__name__)
@@ -34,20 +36,21 @@ async def upload_task(client: ClientSession, phones: list, feedback):
             break
 
         try:
-            await full_upload_phone(client, phone, feedback)
+            purchase_id = await full_upload_phone(client, phone, feedback)
+            await mark_as_uploaded(phone, purchase_id)
         except Exception as e:
             await feedback(f'Unexpected error while uploading {phone}: {e}')
             continue
 
-        await mark_as_uploaded(phone)
 
 
-async def full_upload_phone(client, phone, feedback):
+
+async def full_upload_phone(client, phone, feedback) -> Optional[int]:
     if (await exists_phone(client, phone)):
-        feedback(f'{phone} already exists.')
+        await feedback(f'{phone} already exists.')
         return
 
-    await register_payment(client, phone)
+    return await register_payment(client, phone)
 
 
 async def exists_phone(client, phone) -> bool:
@@ -60,8 +63,19 @@ async def exists_phone(client, phone) -> bool:
         return data['data']['participant']
 
 
-async def register_payment(client, phone):
-    logger.warning('Registration is stubbed at the moment.')
+async def register_payment(client, phone) -> int:
+    async with client.post(CASHIER_SITE + PURCHASE_URL, json={
+        'cash': DEFAULT_REGISTRATION_AMOUNT,
+        'phone': phone,
+        'total': DEFAULT_REGISTRATION_AMOUNT,
+    }) as response:
+        logger.debug(await response.read())
+        data = await response.json()
+        if not (isinstance(data.get('dateCreated'), str) and isinstance(data.get('id'), int)):
+            raise ValueError(f'Problem while registering payment for {phone}')
+
+        return int(data['id'])
+
 
 
 

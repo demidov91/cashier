@@ -28,12 +28,12 @@ async def fetch_phones(state=None):
             ))
 
 
-async def mark_as_uploaded(phone: str):
+async def mark_as_uploaded(phone: str, purchase_id: int):
     with closing_connection() as conn:
         with conn as cur:
             return tuple(x[0] for x in cur.execute(
-                'UPDATE phones SET state=? WHERE phone=?',
-                (STATE_UPLOADED, phone)
+                'UPDATE phones SET state=?, purchase_id=? WHERE phone=?',
+                (STATE_UPLOADED, purchase_id, phone)
             ))
 
 
