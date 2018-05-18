@@ -8,6 +8,32 @@ def closing_connection():
     return contextlib.closing(sqlite3.connect('phones.db'))
 
 
+async def create_db():
+    with closing_connection() as conn:
+        with conn as cur:
+            cur.execute(
+                'CREATE TABLE IF NOT EXISTS phones ('
+                'phone char(13) NOT NULL PRIMARY KEY, '
+                'state char(15) NOT NULL, '
+                'purchase_id INTEGER NULL'
+                ');'
+            )
+
+            cur.execute(
+                'CREATE TABLE IF NOT EXISTS users ('
+                'email char(127) NOT NULL PRIMARY KEY, '
+                'token varchar(127) NULL'
+                ');'
+            )
+            
+            cur.execute(
+                'CREATE TABLE IF NOT EXISTS admins ('
+                'email char(127) NOT NULL PRIMARY KEY, '
+                'token varchar(127) NULL'
+                ');'
+            )
+
+
 async def _fetch_all_phones():
     with closing_connection() as conn:
         with conn as cur:
