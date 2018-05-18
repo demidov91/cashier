@@ -5,7 +5,7 @@ import sys
 import itertools
 
 from aiohttp.client import ClientSession
-from cashier.db import closing_connection, fetch_phones, get_one_token
+from cashier.db import closing_connection, fetch_phones, get_one_token, create_db
 from cashier.notifications import warning, feedback
 from cashier.connector import auth as remote_auth, upload_task
 from cashier.constants import (
@@ -98,26 +98,7 @@ async def _watch_phones(phones):
         await feedback('{} left to upload'.format(len(phones)))
         await asyncio.sleep(1)
 
-
-async def create_db():
-    with closing_connection() as conn:
-        with conn as cur:
-            cur.execute(
-                'CREATE TABLE IF NOT EXISTS phones ('
-                'phone char(13) NOT NULL PRIMARY KEY, '
-                'state char(15) NOT NULL, '
-                'purchase_id INTEGER NULL'
-                ') without rowid;'
-            )
-
-            cur.execute(
-                'CREATE TABLE IF NOT EXISTS users ('
-                'email char(127) NOT NULL PRIMARY KEY, '
-                'token varchar(127) NULL'
-                ') without rowid;'
-            )
-
-
+        
 def run():
     method = sys.argv[1]
     kwargs = {
