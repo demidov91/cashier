@@ -8,10 +8,12 @@ from aiohttp.client import ClientSession
 from cashier.db import (
     closing_connection, 
     fetch_phones, 
-    get_one_token, 
+    get_one_cashier_token, 
+    get_one_admin_token, 
+    get_purchases_for_removal,
     create_db,
     add_user_into_db,
-    add_admin_into_db
+    add_admin_into_db,
 )
 from cashier.notifications import warning, feedback
 from cashier.connector import (
@@ -83,7 +85,7 @@ async def db_state() -> dict:
 
 async def start_uploading(token=None):
     if token is None:
-        token = await get_one_token()
+        token = await get_one_cashier_token()
 
     if token is None:
         raise ValueError('Token is not defined.')
@@ -109,6 +111,15 @@ async def admin_auth(email, password):
     
     await add_admin_into_db(email, token) 
     return token
+
+
+async def remove_purchases(token=None) -> int:
+    if token is None:
+        token = await get_one_admin_token()
+
+    async with AdminConnector(feedback=feedback, token=token) as client:
+        for purchase_id in (await get_purchases_for_removal()):
+            await client.launch_purchase_removal(purchase_id)
    
 
         
@@ -153,7 +164,13 @@ def run():
              admin_auth(kwargs['email'], kwargs['password'])
         )
         print(f'Token {token}')
-        return         
+        return 
+
+    if method == 'remove_purchases':
+        loop.run_until_complete(
+            remove_purchases(kwargs.get('token'))
+        )
+        return           
 
     print(f'Method {method} was not found.')
 

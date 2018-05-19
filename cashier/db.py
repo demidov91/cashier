@@ -1,7 +1,7 @@
 import sqlite3
 import contextlib
 
-from cashier.constants import STATE_UPLOADED
+from cashier.constants import STATE_UPLOADED, STATE_CLEARED
 
 
 def closing_connection():
@@ -29,7 +29,8 @@ async def create_db():
             cur.execute(
                 'CREATE TABLE IF NOT EXISTS admins ('
                 'email char(127) NOT NULL PRIMARY KEY, '
-                'token varchar(127) NULL'
+                'token varchar(127) NULL,',
+                'company_id INTEGER NULL'
                 ');'
             )
 
@@ -53,6 +54,13 @@ async def fetch_phones(state=None):
                 (state, )
             ))
 
+async def get_purchases_for_removal():
+    with closing_connection() as conn:
+        return tuple(x[0] for x in conn.execute(
+            'SELECT purchase_id from phones WHERE state=?',
+            (STATE_UPLOADED, )
+        ))
+
 
 async def mark_as_uploaded(phone: str, purchase_id: int):
     with closing_connection() as conn:
@@ -63,16 +71,40 @@ async def mark_as_uploaded(phone: str, purchase_id: int):
             ))
 
 
-async def get_one_token():
+async def mark_as_cleared(purchase_id: str):
     with closing_connection() as conn:
         with conn as cur:
-            result = cur.execute('SELECT token from users')
+            return tuple(x[0] for x in cur.execute(
+                'UPDATE phones SET state=? WHERE purchase_id=?',
+                (STATE_CLEARED, purchase_id)
+            ))
+
+
+async def _get_one_token(table_name: str):
+    with closing_connection() as conn:
+        with conn as cur:
+            result = cur.execute(f'SELECT token from {table_name}')
             tokens = tuple(x[0] for x in result)
             if len(tokens) != 1:
                 raise ValueError('One token is expected, got {}'.format(len(tokens)))
 
     return tokens[0]
 
+
+async def get_one_cashier_token():
+    return await _get_one_token('users')
+
+
+async def get_one_admin_token():
+    return await _get_one_token('admins')
+
+
+async def get_company_id_by_token(token: str) -> int:
+    with closing_connection() as conn:
+        return conn.execute(
+            'SELECT company_id FROM admins WHERE token=?',
+            (token, ), 
+        ).fetchone()[0]
 
 async def add_user_into_db(email: str, token: str) -> str:
     with closing_connection() as conn:

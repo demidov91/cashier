@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import urllib.parse
 from typing import Optional
@@ -11,10 +12,15 @@ from cashier.constants import (
     PURCHASE_URL,
     USER_INFO_URL,
     ADMIN_LOGIN_FULL_URL,
+    ADMIN_REMOVE_URL,
     ADMIN_SITE,
     ADMIN_TOKEN_URL,
 )
-from cashier.db import mark_as_uploaded
+from cashier.db import (
+    mark_as_uploaded, 
+    get_company_id_by_token, 
+    mark_as_cleared,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -82,18 +88,34 @@ async def register_payment(client, phone) -> int:
 
 
 class AdminConnector:
+    company_id = None  # type: int
+
     def __init__(self, feedback, token: str=None):
         self.feedback = feedback
-        self.client = ClientSession()
+
+
+        if token:
+            headers = {'Authorization': f'Bearer {token}'} 
+        
+        else:
+            headers = {}
+
+        self.client = ClientSession(headers=headers)
+
         self.token = token
+        self.removal_tasks = []
         
     async def __aenter__(self):
+        if self.token:
+            self.company_id = await get_company_id_by_token(self.token)
+
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
         
     async def close(self):
+        await self.complete_removal()
         await self.client.close()
         
     async def auth(self, email, password):
@@ -130,3 +152,30 @@ class AdminConnector:
     def _parse_intermediate_token(self, redirect_url: str):
          query = urllib.parse.urlparse(redirect_url).query
          return urllib.parse.parse_qs(query)['token'][0]
+
+    async def remove_purchase(self, purchase_id: int) -> int:
+       logger.debug('%d removal started.', purchase_id)
+       async with self.client.delete(
+           ADMIN_SITE + ADMIN_REMOVE_URL.format(self.company_id, purchase_id)
+       ) as resp:
+           logger.debug(await resp.read())
+           if resp.status != 204:
+               raise ValueError(f'Expected 204, got {resp.status} instead.')
+
+       await self.feedback(f'{purchase_id} is removed.')
+       return purchase_id
+
+    async def launch_purchase_removal(self, purchase_id):
+        self.removal_tasks.append(
+            asyncio.ensure_future(self.remove_purchase(purchase_id))
+        ) 
+
+
+    async def complete_removal(self):
+        for future in asyncio.as_completed(self.removal_tasks):
+             try:
+                purchase_id = await future
+                await mark_as_cleared(purchase_id)
+             except Exception as e:
+                await self.feedback(f"Can't remove a purchase: {e}")
+                continue
