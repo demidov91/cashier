@@ -5,9 +5,20 @@ import sys
 import itertools
 
 from aiohttp.client import ClientSession
-from cashier.db import closing_connection, fetch_phones, get_one_token, create_db
+from cashier.db import (
+    closing_connection, 
+    fetch_phones, 
+    get_one_token, 
+    create_db,
+    add_user_into_db,
+    add_admin_into_db
+)
 from cashier.notifications import warning, feedback
-from cashier.connector import auth as remote_auth, upload_task
+from cashier.connector import (
+    auth as remote_auth, 
+    upload_task,
+    AdminConnector,
+)
 from cashier.constants import (
     STATE_READY,
     STATE_UPLOADED,
@@ -24,13 +35,6 @@ async def auth(email: str, password: str) -> str:
     token = await remote_auth(email, password)
     await add_user_into_db(email, token)
     return token
-
-
-async def add_user_into_db(email: str, token: str) -> str:
-    with closing_connection() as conn:
-        with conn as cur:
-            cur.execute('INSERT OR IGNORE INTO users (email) VALUES (?)', (email, ))
-            cur.execute('UPDATE users SET token=? WHERE email=?', (token, email))
 
 
 async def upload_file(path: str) -> int:
@@ -101,7 +105,7 @@ async def _watch_phones(phones):
 
 async def admin_auth(email, password):
     async with AdminConnector(feedback) as client:
-        token = await client.auth()
+        token = await client.auth(email, password)
     
     await add_admin_into_db(email, token) 
    
@@ -142,6 +146,13 @@ def run():
             start_uploading(kwargs.get('token'))
         )
         return
+
+    if method == 'admin_auth':
+        token = loop.run_until_complete(
+             admin_auth(kwargs['email'], kwargs['password'])
+        )
+        print(f'Token {token}')
+        return         
 
     print(f'Method {method} was not found.')
 

@@ -72,3 +72,19 @@ async def get_one_token():
                 raise ValueError('One token is expected, got {}'.format(len(tokens)))
 
     return tokens[0]
+
+
+async def add_user_into_db(email: str, token: str) -> str:
+    with closing_connection() as conn:
+        with conn as cur:
+            cur.execute('INSERT OR IGNORE INTO users (email) VALUES (?)', (email, ))
+            cur.execute('UPDATE users SET token=? WHERE email=?', (token, email))
+
+
+async def add_admin_into_db(email: str, token: str) -> str:
+    with closing_connection() as conn:
+        with conn as cur:
+            cur.execute('INSERT OR IGNORE INTO admins (email) VALUES (?)', (email, ))
+            cur.execute('UPDATE admins SET token=? WHERE email=?', (token, email))
+
+

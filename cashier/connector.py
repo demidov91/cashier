@@ -1,4 +1,5 @@
 import logging
+import urllib.parse
 from typing import Optional
 
 from aiohttp.client import ClientSession
@@ -10,6 +11,8 @@ from cashier.constants import (
     PURCHASE_URL,
     USER_INFO_URL,
     ADMIN_LOGIN_FULL_URL,
+    ADMIN_SITE,
+    ADMIN_TOKEN_URL,
 )
 from cashier.db import mark_as_uploaded
 
@@ -84,29 +87,46 @@ class AdminConnector:
         self.client = ClientSession()
         self.token = token
         
-    async def __ienter__(self):
+    async def __aenter__(self):
         return self
     
-    async def __iexit__(self):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
         
     async def close(self):
-        self.client.close()
+        await self.client.close()
         
-    async def auth(email, password):
+    async def auth(self, email, password):
         async with self.client.post(ADMIN_LOGIN_FULL_URL, data={
             'email': email,
             'password': password,
-        }) as resp:
+        }, allow_redirects=False) as resp:
             if resp.status != 302:
                 raise ValueError(f'302 expected got {resp.status}')
                
             step_2_url = resp.headers['Location']
             
-        async with self.client.get(step_2_url) as resp:            
+        async with self.client.get(step_2_url, allow_redirects=False) as resp:            
             if resp.status != 302:
                 raise ValueError(f'302 expected got {resp.status}')
                
-            self.token = resp.headers['Location']
+            hello_page_url = resp.headers['Location']
             
+        logger.debug('"hello-page" url is %s', hello_page_url)
+        intermediate_token = self._parse_intermediate_token(hello_page_url)
+        
+        async with self.client.post(ADMIN_SITE + ADMIN_TOKEN_URL, {
+            'token': intermediate_token,
+        }) as resp:
+             if resp.status != 200:
+                  raise ValueError(f'200 is expected, got {resp.status}')
+
+             logger.debug(await resp.read())
+             data = await resp.json()              
+             self.token = data['token']
+
         return self.token
+
+    def _parse_intermediate_token(self, redirect_url: str):
+         query = urllib.parse.urlparse(redirect_url).query
+         return urllib.parse.parse_qs(query)['token'][0]
