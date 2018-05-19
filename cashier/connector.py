@@ -115,7 +115,7 @@ class AdminConnector:
         logger.debug('"hello-page" url is %s', hello_page_url)
         intermediate_token = self._parse_intermediate_token(hello_page_url)
         
-        async with self.client.post(ADMIN_SITE + ADMIN_TOKEN_URL, {
+        async with self.client.post(ADMIN_SITE + ADMIN_TOKEN_URL, json={
             'token': intermediate_token,
         }) as resp:
              if resp.status != 200:

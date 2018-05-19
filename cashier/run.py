@@ -108,6 +108,7 @@ async def admin_auth(email, password):
         token = await client.auth(email, password)
     
     await add_admin_into_db(email, token) 
+    return token
    
 
         
