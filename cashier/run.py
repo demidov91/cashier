@@ -14,7 +14,6 @@ from cashier.db import (
     create_db,
     add_user_into_db,
     add_admin_into_db,
-    mark_as_cleared,
 )
 from cashier.notifications import warning, feedback
 from cashier.connector import (
@@ -120,16 +119,7 @@ async def remove_purchases(token=None) -> int:
 
     async with AdminConnector(feedback=feedback, token=token) as client:
         for purchase_id in (await get_purchases_for_removal()):
-            # Remote server can't run it concurrently :( 
-
-            try:
-                await client.remove_purchase(purchase_id)
-                await mark_as_cleared(purchase_id)
-                await feedback(f'{purchase_id} is removed.')
-            except Exception as e:
-                await feedback(
-                    f'There was an error while removing {purchase_id}: {e}'
-                )
+            await client.launch_purchase_removal(purchase_id)
    
 
         

@@ -3,7 +3,6 @@ import logging
 import urllib.parse
 from typing import Optional
 
-from aiohttp import TCPConnector
 from aiohttp.client import ClientSession
 
 from cashier.constants import (
@@ -20,6 +19,7 @@ from cashier.constants import (
 from cashier.db import (
     mark_as_uploaded, 
     get_company_id_by_token, 
+    mark_as_cleared,
 )
 
 
@@ -100,10 +100,7 @@ class AdminConnector:
         else:
             headers = {}
 
-        self.client = ClientSession(
-            headers=headers, 
-            connector=TCPConnector(limit=10)
-        )
+        self.client = ClientSession(headers=headers)
 
         self.token = token
         self.removal_tasks = []
@@ -118,6 +115,7 @@ class AdminConnector:
         await self.close()
         
     async def close(self):
+        await self.complete_removal()
         await self.client.close()
         
     async def auth(self, email, password):
@@ -160,10 +158,24 @@ class AdminConnector:
        async with self.client.delete(
            ADMIN_SITE + ADMIN_REMOVE_URL.format(self.company_id, purchase_id)
        ) as resp:
-           if resp.status == 404:
-               await self.feedback(f'{purchase_id} is already removed.')
-               return
-
            logger.debug(await resp.read())
            if resp.status != 204:
                raise ValueError(f'Expected 204, got {resp.status} instead.')
+
+       await self.feedback(f'{purchase_id} is removed.')
+       return purchase_id
+
+    async def launch_purchase_removal(self, purchase_id):
+        self.removal_tasks.append(
+            asyncio.ensure_future(self.remove_purchase(purchase_id))
+        ) 
+
+
+    async def complete_removal(self):
+        for future in asyncio.as_completed(self.removal_tasks):
+             try:
+                purchase_id = await future
+                await mark_as_cleared(purchase_id)
+             except Exception as e:
+                await self.feedback(f"Can't remove a purchase: {e}")
+                continue
