@@ -39,7 +39,12 @@ async def auth(email: str, password: str) -> str:
             return data['token']
 
 
-async def upload_task(client: ClientSession, phones: list, feedback):
+async def upload_task(
+        client: ClientSession,
+        remover: 'OperationRemover',
+        phones: list,
+        feedback
+):
     while True:
         try:
             phone = phones.pop()
@@ -49,6 +54,8 @@ async def upload_task(client: ClientSession, phones: list, feedback):
         try:
             purchase_id = await full_upload_phone(client, phone, feedback)
             await mark_as_uploaded(phone, purchase_id)
+            if purchase_id:
+                await remover.launch_purchase_removal(purchase_id)
         except Exception as e:
             await feedback(f'Unexpected error while uploading {phone}: {e}')
             continue
@@ -149,16 +156,17 @@ class OperationRemover:
         await self.client.close()
 
     async def remove_purchase(self, purchase_id: int) -> int:
-       logger.debug('%d removal started.', purchase_id)
-       async with self.client.delete(
+        logger.debug('%d removal started.', purchase_id)
+        async with self.client.delete(
            ADMIN_SITE + ADMIN_REMOVE_URL.format(self.company_id, purchase_id)
-       ) as resp:
-           logger.debug(await resp.read())
-           if resp.status != 204:
-               raise ValueError(f'Expected 204, got {resp.status} instead.')
+        ) as resp:
+            logger.debug(await resp.read())
+            if resp.status != 204:
+                raise ValueError(f'Expected 204, got {resp.status} instead.')
 
-       await self.feedback(f'{purchase_id} is removed.')
-       return purchase_id
+        await mark_as_cleared(purchase_id)
+        await self.feedback(f'{purchase_id} is removed.')
+        return purchase_id
 
     async def launch_purchase_removal(self, purchase_id):
         self.removal_tasks.append(
@@ -168,8 +176,7 @@ class OperationRemover:
     async def complete_removal(self):
         for future in asyncio.as_completed(self.removal_tasks):
              try:
-                purchase_id = await future
-                await mark_as_cleared(purchase_id)
+                await future
              except Exception as e:
                 await self.feedback(f"Can't remove a purchase: {e}")
                 continue

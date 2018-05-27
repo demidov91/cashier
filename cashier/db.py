@@ -76,7 +76,7 @@ async def mark_as_uploaded(phone: str, purchase_id: int):
             ))
 
 
-async def mark_as_cleared(purchase_id: str):
+async def mark_as_cleared(purchase_id: int):
     with closing_connection() as conn:
         with conn as cur:
             return tuple(x[0] for x in cur.execute(
