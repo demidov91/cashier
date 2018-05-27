@@ -3,6 +3,7 @@ import logging
 import urllib.parse
 from typing import Optional
 
+from aiohttp import TCPConnector
 from aiohttp.client import ClientSession
 
 from cashier.constants import (
@@ -53,10 +54,8 @@ async def upload_task(client: ClientSession, phones: list, feedback):
             continue
 
 
-
-
 async def full_upload_phone(client, phone, feedback) -> Optional[int]:
-    if (await exists_phone(client, phone)):
+    if await exists_phone(client, phone):
         await feedback(f'{phone} already exists.')
         return
 
@@ -87,28 +86,59 @@ async def register_payment(client, phone) -> int:
         return int(data['id'])
 
 
-class AdminConnector:
+async def admin_auth(email, password) -> str:
+    async with ClientSession() as client:
+        async with client.post(ADMIN_LOGIN_FULL_URL, data={
+            'email': email,
+            'password': password,
+        }, allow_redirects=False) as resp:
+            if resp.status != 302:
+                raise ValueError(f'302 expected got {resp.status}')
+
+            step_2_url = resp.headers['Location']
+
+        async with client.get(step_2_url, allow_redirects=False) as resp:
+            if resp.status != 302:
+                raise ValueError(f'302 expected got {resp.status}')
+
+            hello_page_url = resp.headers['Location']
+
+        logger.debug('"hello-page" url is %s', hello_page_url)
+        intermediate_token = _parse_intermediate_token(hello_page_url)
+
+        async with client.post(ADMIN_SITE + ADMIN_TOKEN_URL, json={
+            'token': intermediate_token,
+        }) as resp:
+            if resp.status != 200:
+                raise ValueError(f'200 is expected, got {resp.status}')
+
+            logger.debug(await resp.read())
+            data = await resp.json()
+            return data['token']
+
+
+def _parse_intermediate_token(redirect_url: str):
+    """
+    Helper function for admin auth.
+    """
+    query = urllib.parse.urlparse(redirect_url).query
+    return urllib.parse.parse_qs(query)['token'][0]
+
+
+class OperationRemover:
     company_id = None  # type: int
 
-    def __init__(self, feedback, token: str=None):
+    def __init__(self, feedback, token: str):
         self.feedback = feedback
-
-
-        if token:
-            headers = {'Authorization': f'Bearer {token}'} 
-        
-        else:
-            headers = {}
-
-        self.client = ClientSession(headers=headers)
-
         self.token = token
+        self.client = ClientSession(
+            connector=TCPConnector(limit=2),    # Remote server doesn't work concurrently.
+            headers={'Authorization': f'Bearer {token}'},
+        )
         self.removal_tasks = []
         
     async def __aenter__(self):
-        if self.token:
-            self.company_id = await get_company_id_by_token(self.token)
-
+        self.company_id = await get_company_id_by_token(self.token)
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -117,41 +147,6 @@ class AdminConnector:
     async def close(self):
         await self.complete_removal()
         await self.client.close()
-        
-    async def auth(self, email, password):
-        async with self.client.post(ADMIN_LOGIN_FULL_URL, data={
-            'email': email,
-            'password': password,
-        }, allow_redirects=False) as resp:
-            if resp.status != 302:
-                raise ValueError(f'302 expected got {resp.status}')
-               
-            step_2_url = resp.headers['Location']
-            
-        async with self.client.get(step_2_url, allow_redirects=False) as resp:            
-            if resp.status != 302:
-                raise ValueError(f'302 expected got {resp.status}')
-               
-            hello_page_url = resp.headers['Location']
-            
-        logger.debug('"hello-page" url is %s', hello_page_url)
-        intermediate_token = self._parse_intermediate_token(hello_page_url)
-        
-        async with self.client.post(ADMIN_SITE + ADMIN_TOKEN_URL, json={
-            'token': intermediate_token,
-        }) as resp:
-             if resp.status != 200:
-                  raise ValueError(f'200 is expected, got {resp.status}')
-
-             logger.debug(await resp.read())
-             data = await resp.json()              
-             self.token = data['token']
-
-        return self.token
-
-    def _parse_intermediate_token(self, redirect_url: str):
-         query = urllib.parse.urlparse(redirect_url).query
-         return urllib.parse.parse_qs(query)['token'][0]
 
     async def remove_purchase(self, purchase_id: int) -> int:
        logger.debug('%d removal started.', purchase_id)
@@ -168,8 +163,7 @@ class AdminConnector:
     async def launch_purchase_removal(self, purchase_id):
         self.removal_tasks.append(
             asyncio.ensure_future(self.remove_purchase(purchase_id))
-        ) 
-
+        )
 
     async def complete_removal(self):
         for future in asyncio.as_completed(self.removal_tasks):

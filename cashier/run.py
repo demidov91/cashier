@@ -17,9 +17,10 @@ from cashier.db import (
 )
 from cashier.notifications import warning, feedback
 from cashier.connector import (
-    auth as remote_auth, 
+    auth as remote_auth,
+    admin_auth as remote_admin_auth,
     upload_task,
-    AdminConnector,
+    OperationRemover,
 )
 from cashier.constants import (
     STATE_READY,
@@ -63,24 +64,11 @@ async def upload_file(path: str) -> int:
 
 
 async def db_state() -> dict:
-    info = {
-        'ready': None,
-        'uploaded': None,
-    }
-
     with closing_connection() as conn:
         with conn as cur:
-            info['ready'] = cur.execute(
-                'SELECT COUNT(*) FROM phones where state=?',
-                (STATE_READY, )
-            ).fetchone()[0]
-
-            info['uploaded'] = cur.execute(
-                'SELECT COUNT(*) FROM phones where state=?',
-                (STATE_UPLOADED, )
-            ).fetchone()[0]
-
-    return info
+            return dict(cur.execute(
+                'SELECT state, COUNT(*) FROM phones GROUP BY state'
+            ).fetchall())
 
 
 async def start_uploading(token=None):
@@ -106,9 +94,7 @@ async def _watch_phones(phones):
 
 
 async def admin_auth(email, password):
-    async with AdminConnector(feedback) as client:
-        token = await client.auth(email, password)
-    
+    token = await remote_admin_auth(email, password)
     await add_admin_into_db(email, token) 
     return token
 
@@ -117,12 +103,11 @@ async def remove_purchases(token=None) -> int:
     if token is None:
         token = await get_one_admin_token()
 
-    async with AdminConnector(feedback=feedback, token=token) as client:
+    async with OperationRemover(feedback=feedback, token=token) as client:
         for purchase_id in (await get_purchases_for_removal()):
             await client.launch_purchase_removal(purchase_id)
    
 
-        
 def run():
     method = sys.argv[1]
     kwargs = {

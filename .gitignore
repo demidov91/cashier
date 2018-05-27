@@ -2,3 +2,4 @@ phones.db
 __pycache__/
 .idea/
 *.dump
+*.txt

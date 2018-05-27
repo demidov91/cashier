@@ -29,7 +29,7 @@ async def create_db():
             cur.execute(
                 'CREATE TABLE IF NOT EXISTS admins ('
                 'email char(127) NOT NULL PRIMARY KEY, '
-                'token varchar(127) NULL,',
+                'token varchar(127) NULL, '
                 'company_id INTEGER NULL'
                 ');'
             )
@@ -54,10 +54,15 @@ async def fetch_phones(state=None):
                 (state, )
             ))
 
+
 async def get_purchases_for_removal():
     with closing_connection() as conn:
         return tuple(x[0] for x in conn.execute(
-            'SELECT purchase_id from phones WHERE state=?',
+            'SELECT '
+            'purchase_id '
+            'FROM phones '
+            'WHERE '
+            'state=? AND purchase_id is not NULL',
             (STATE_UPLOADED, )
         ))
 
@@ -105,6 +110,7 @@ async def get_company_id_by_token(token: str) -> int:
             'SELECT company_id FROM admins WHERE token=?',
             (token, ), 
         ).fetchone()[0]
+
 
 async def add_user_into_db(email: str, token: str) -> str:
     with closing_connection() as conn:
