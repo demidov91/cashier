@@ -7,7 +7,8 @@ import itertools
 from aiohttp.client import ClientSession
 from cashier.db import (
     closing_connection, 
-    fetch_phones, 
+    fetch_phones,
+    get_auto_upload_remove_remaining_number,
     get_one_cashier_token, 
     get_one_admin_token, 
     get_purchases_for_removal,
@@ -85,14 +86,14 @@ async def db_state() -> dict:
     return info
 
 
-async def upload_batch_to_server(cashier_token: str=None):
+async def upload_batch_to_server(with_failed: bool, cashier_token: str=None):
     if cashier_token is None:
         cashier_token = get_one_cashier_token()
 
     if cashier_token is None:
         raise ValueError('Cashier token is not defined.')
 
-    phones = list(fetch_phones(state=STATE_READY, limit=50))
+    phones = list(fetch_phones(state=STATE_READY, with_failed=with_failed, limit=50))
 
     async with ClientSession(headers={'Authorization': f'Bearer {cashier_token}'}) as client:
         tasks = [
@@ -116,11 +117,11 @@ async def admin_auth(email, password):
     return token
 
 
-async def remove_purchases(token=None):
+async def remove_purchases(with_failed: bool, token=None):
     if token is None:
         token = get_one_admin_token()
 
-    purchases = list(get_purchases_for_removal())
+    purchases = list(get_purchases_for_removal(with_failed=with_failed))
 
     tasks = [
         remove_purchases_task(token, purchases, feedback)
@@ -130,8 +131,14 @@ async def remove_purchases(token=None):
 
 
 async def upload_to_server_and_clear(cashier_token=None, admin_token=None):
-    await upload_batch_to_server(cashier_token)
-    await remove_purchases(admin_token)
+    while True:
+        info = get_auto_upload_remove_remaining_number()
+        await feedback(info)
+        if not any(info.values()):
+            break
+
+        await upload_batch_to_server(cashier_token=cashier_token, with_failed=False)
+        await remove_purchases(token=admin_token, with_failed=False)
 
 
 def run():
@@ -166,7 +173,7 @@ def run():
 
     if method == 'start_uploading':
         loop.run_until_complete(
-            upload_batch_to_server(kwargs.get('token'))
+            upload_batch_to_server(with_failed=True, cashier_token=kwargs.get('token'))
         )
         return
 
@@ -185,6 +192,7 @@ def run():
 
     if method == 'remote':
         loop.run_until_complete(upload_to_server_and_clear(**kwargs))
+        print(loop.run_until_complete(db_state()))
         return
 
     print(f'Method {method} was not found.')

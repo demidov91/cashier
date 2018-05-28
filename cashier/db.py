@@ -81,16 +81,38 @@ def fetch_phones(state=None, with_failed=False, limit=None):
             return tuple(x[0] for x in cur.execute(query, args))
 
 
-def get_purchases_for_removal():
+def get_purchases_for_removal(with_failed: bool):
+    where_query = ['state=?', 'purchase_id is not NULL']
+    args = [STATE_UPLOADED]
+
+    if not with_failed:
+        where_query.append('failed_to_clear=?')
+        args.append(False)
+
+    query = 'SELECT purchase_id FROM phones WHERE {}'.format(
+        ' AND '.join(where_query)
+    )
+
     with closing_connection() as conn:
-        return tuple(x[0] for x in conn.execute(
-            'SELECT '
-            'purchase_id '
-            'FROM phones '
-            'WHERE '
-            'state=? AND purchase_id is not NULL',
-            (STATE_UPLOADED, )
-        ))
+        return tuple(x[0] for x in conn.execute(query, args))
+
+
+def get_auto_upload_remove_remaining_number():
+    remaining = {STATE_READY: None, STATE_UPLOADED: None}
+
+    with closing_connection() as conn:
+        with conn as cur:
+            remaining[STATE_READY] = cur.execute(
+                'SELECT COUNT(1) from phones WHERE state=? AND failed_to_upload=0',
+                (STATE_READY, ),
+            ).fetchone()[0]
+
+            remaining[STATE_UPLOADED] = cur.execute(
+                'SELECT COUNT(1) from phones WHERE state=? AND failed_to_clear=0',
+                (STATE_UPLOADED, ),
+            ).fetchone()[0]
+
+    return remaining
 
 
 def mark_as_broken(phone: str):
