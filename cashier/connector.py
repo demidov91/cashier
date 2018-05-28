@@ -16,10 +16,14 @@ from cashier.constants import (
     ADMIN_TOKEN_URL,
 )
 from cashier.db import (
+    failed_to_clear,
+    failed_to_upload,
     mark_as_uploaded_or_cleared,
     get_company_id_by_token,
+    mark_as_broken,
     mark_as_cleared,
 )
+from cashier.exceptions import BrokenPhoneError
 
 
 logger = logging.getLogger(__name__)
@@ -51,8 +55,14 @@ async def upload_task(
         try:
             purchase_id = await full_upload_phone(client, phone, feedback)
             mark_as_uploaded_or_cleared(phone, purchase_id)
+        except BrokenPhoneError:
+            await feedback(f'{phone} is invalid phone number.')
+            mark_as_broken(phone)
+            continue
+
         except Exception as e:
             await feedback(f'Unexpected error while uploading {phone}: {e}')
+            failed_to_upload(phone)
             continue
 
 
@@ -69,6 +79,9 @@ async def exists_phone(client, phone) -> bool:
         logger.debug(await response.read())
         data = await response.json()
         if 'errorCode' in data:
+            if data['errorCode'] == 'invalid.phoneNumber':
+                raise BrokenPhoneError(phone)
+
             raise ValueError(data.get('message', data['errorCode']))
 
         return data['data']['participant']
@@ -141,6 +154,7 @@ async def remove_purchases_task(token, purchases: List[int], feedback):
             try:
                 is_removed = await remove_purchase(client, company_id, purchase_id)
                 if not is_removed:
+                    failed_to_clear(purchase_id)
                     await feedback(f'Operation {purchase_id} was not removed.')
 
                 else:

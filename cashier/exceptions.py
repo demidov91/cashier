@@ -1,0 +1,2 @@
+class BrokenPhoneError(ValueError):
+    pass

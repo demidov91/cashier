@@ -20,7 +20,9 @@ def create_db():
                 'CREATE TABLE IF NOT EXISTS phones ('
                 'phone char(13) NOT NULL PRIMARY KEY, '
                 'state char(15) NOT NULL, '
-                'purchase_id INTEGER NULL'
+                'purchase_id INTEGER NULL, '
+                'failed_to_upload BOOLEAN DEFAULT 0, '
+                'failed_to_clear BOOLEAN DEFAULT 0'
                 ');'
             )
 
@@ -48,16 +50,35 @@ def _fetch_all_phones():
             ))
 
 
-def fetch_phones(state=None):
+def fetch_phones(state=None, with_failed=False, limit=None):
     if state is None:
         return _fetch_all_phones()
 
+    where_statements = ['state=?']
+    args = [state]
+
+    if not with_failed:
+        if state == STATE_READY:
+            where_statements.append('failed_to_upload=?')
+            args.append(False)
+
+        elif state == STATE_UPLOADED:
+            where_statements.append('failed_to_clear=?')
+            args.append(False)
+
+    limit_statement = ''
+    if limit is not None:
+        limit_statement = 'LIMIT ?'
+        args.append(limit)
+
+    query = 'SELECT phone FROM phones WHERE {} {}'.format(
+        ' AND '.join(where_statements),
+        limit_statement
+    )
+
     with closing_connection() as conn:
         with conn as cur:
-            return tuple(x[0] for x in cur.execute(
-                'SELECT phone FROM phones WHERE state=?',
-                (state, )
-            ))
+            return tuple(x[0] for x in cur.execute(query, args))
 
 
 def get_purchases_for_removal():
@@ -70,6 +91,15 @@ def get_purchases_for_removal():
             'state=? AND purchase_id is not NULL',
             (STATE_UPLOADED, )
         ))
+
+
+def mark_as_broken(phone: str):
+    with closing_connection() as conn:
+        with conn as cur:
+            cur.execute(
+                'UPDATE phones SET state=? WHERE phone=?',
+                (STATE_BROKEN, phone)
+            )
 
 
 def mark_as_uploaded_or_cleared(phone: str, purchase_id: int):
@@ -105,6 +135,21 @@ def mark_all_ready_as_broken():
             cur.execute(
                 'UPDATE phones set state=? WHERE state=?',
                 (STATE_BROKEN, STATE_READY)
+            )
+
+
+def failed_to_upload(phone: str):
+    with closing_connection() as conn:
+        with conn as cur:
+            cur.execute('UPDATE phones SET failed_to_upload=True WHERE phone=?', (phone, ))
+
+
+def failed_to_clear(purchase_id: int):
+    with closing_connection() as conn:
+        with conn as cur:
+            cur.execute(
+                'UPDATE phones SET failed_to_clear=True WHERE purchase_id=?',
+                (purchase_id, )
             )
 
 

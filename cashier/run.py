@@ -66,19 +66,33 @@ async def upload_file(path: str) -> int:
 async def db_state() -> dict:
     with closing_connection() as conn:
         with conn as cur:
-            return dict(cur.execute(
+            info = dict(cur.execute(
                 'SELECT state, COUNT(*) FROM phones GROUP BY state'
             ).fetchall())
 
+            info['failed_to_upload'] = cur.execute(
+                'SELECT COUNT(1) FROM phones WHERE failed_to_upload=1'
+            ).fetchone()[0]
 
-async def start_uploading(cashier_token: str=None):
+            info['failed_to_clear'] = cur.execute(
+                'SELECT COUNT(1) FROM phones WHERE failed_to_clear=1'
+            ).fetchone()[0]
+
+    for k in tuple(info.keys()):
+        if not info[k]:
+            del info[k]
+
+    return info
+
+
+async def upload_batch_to_server(cashier_token: str=None):
     if cashier_token is None:
         cashier_token = get_one_cashier_token()
 
     if cashier_token is None:
         raise ValueError('Cashier token is not defined.')
 
-    phones = list(fetch_phones(state=STATE_READY))
+    phones = list(fetch_phones(state=STATE_READY, limit=50))
 
     async with ClientSession(headers={'Authorization': f'Bearer {cashier_token}'}) as client:
         tasks = [
@@ -115,6 +129,11 @@ async def remove_purchases(token=None):
     await asyncio.gather(*tasks)
 
 
+async def upload_to_server_and_clear(cashier_token=None, admin_token=None):
+    await upload_batch_to_server(cashier_token)
+    await remove_purchases(admin_token)
+
+
 def run():
     method = sys.argv[1]
     kwargs = {
@@ -129,7 +148,7 @@ def run():
         create_db()
         return
 
-    if method == 'upload_file':
+    if method == 'local':
         new_phones = loop.run_until_complete(upload_file(kwargs['path']))
         info = loop.run_until_complete(db_state())
         print(f'{new_phones} new phones are added.\n{info}')
@@ -147,7 +166,7 @@ def run():
 
     if method == 'start_uploading':
         loop.run_until_complete(
-            start_uploading(kwargs.get('token'))
+            upload_batch_to_server(kwargs.get('token'))
         )
         return
 
@@ -162,7 +181,11 @@ def run():
         loop.run_until_complete(
             remove_purchases(kwargs.get('token'))
         )
-        return           
+        return
+
+    if method == 'remote':
+        loop.run_until_complete(upload_to_server_and_clear(**kwargs))
+        return
 
     print(f'Method {method} was not found.')
 
