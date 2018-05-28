@@ -1,7 +1,12 @@
 import sqlite3
 import contextlib
 
-from cashier.constants import STATE_UPLOADED, STATE_CLEARED
+from cashier.constants import (
+    STATE_UPLOADED,
+    STATE_CLEARED,
+    STATE_BROKEN,
+    STATE_READY,
+)
 
 
 def closing_connection():
@@ -35,7 +40,7 @@ def create_db():
             )
 
 
-async def _fetch_all_phones():
+def _fetch_all_phones():
     with closing_connection() as conn:
         with conn as cur:
             return tuple(x[0] for x in cur.execute(
@@ -91,6 +96,15 @@ def mark_all_uploaded_as_cleared():
             cur.execute(
                 'UPDATE phones set state=? WHERE state=?',
                 (STATE_CLEARED, STATE_UPLOADED)
+            )
+
+
+def mark_all_ready_as_broken():
+    with closing_connection() as conn:
+        with conn as cur:
+            cur.execute(
+                'UPDATE phones set state=? WHERE state=?',
+                (STATE_BROKEN, STATE_READY)
             )
 
 

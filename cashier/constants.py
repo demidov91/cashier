@@ -1,3 +1,4 @@
+STATE_BROKEN = 'broken'
 STATE_READY = 'ready'
 STATE_UPLOADED = 'uploaded'
 STATE_CLEARED = 'cleared'
