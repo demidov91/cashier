@@ -121,14 +121,14 @@ async def get_company_id_by_token(token: str) -> int:
         ).fetchone()[0]
 
 
-async def add_user_into_db(email: str, token: str) -> str:
+async def add_user_into_db(email: str, token: str):
     with closing_connection() as conn:
         with conn as cur:
             cur.execute('INSERT OR IGNORE INTO users (email) VALUES (?)', (email, ))
             cur.execute('UPDATE users SET token=? WHERE email=?', (token, email))
 
 
-async def add_admin_into_db(email: str, token: str) -> str:
+async def add_admin_into_db(email: str, token: str):
     with closing_connection() as conn:
         with conn as cur:
             cur.execute('INSERT OR IGNORE INTO admins (email) VALUES (?)', (email, ))

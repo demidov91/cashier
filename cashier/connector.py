@@ -1,9 +1,7 @@
-import asyncio
 import logging
 import urllib.parse
 from typing import Optional, List
 
-from aiohttp import TCPConnector
 from aiohttp.client import ClientSession
 
 from cashier.constants import (
@@ -22,7 +20,6 @@ from cashier.db import (
     get_company_id_by_token,
     mark_as_cleared,
 )
-from cashier.exceptions import UnexpectedStatusError
 
 
 logger = logging.getLogger(__name__)
