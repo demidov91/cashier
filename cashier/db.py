@@ -8,7 +8,7 @@ def closing_connection():
     return contextlib.closing(sqlite3.connect('phones.db'))
 
 
-async def create_db():
+def create_db():
     with closing_connection() as conn:
         with conn as cur:
             cur.execute(
@@ -43,9 +43,9 @@ async def _fetch_all_phones():
             ))
 
 
-async def fetch_phones(state=None):
+def fetch_phones(state=None):
     if state is None:
-        return await _fetch_all_phones()
+        return _fetch_all_phones()
 
     with closing_connection() as conn:
         with conn as cur:
@@ -55,7 +55,7 @@ async def fetch_phones(state=None):
             ))
 
 
-async def get_purchases_for_removal():
+def get_purchases_for_removal():
     with closing_connection() as conn:
         return tuple(x[0] for x in conn.execute(
             'SELECT '
@@ -67,7 +67,7 @@ async def get_purchases_for_removal():
         ))
 
 
-async def mark_as_uploaded_or_cleared(phone: str, purchase_id: int):
+def mark_as_uploaded_or_cleared(phone: str, purchase_id: int):
     with closing_connection() as conn:
         with conn as cur:
             return tuple(x[0] for x in cur.execute(
@@ -76,7 +76,7 @@ async def mark_as_uploaded_or_cleared(phone: str, purchase_id: int):
             ))
 
 
-async def mark_as_cleared(purchase_id: int):
+def mark_as_cleared(purchase_id: int):
     with closing_connection() as conn:
         with conn as cur:
             return tuple(x[0] for x in cur.execute(
@@ -85,7 +85,7 @@ async def mark_as_cleared(purchase_id: int):
             ))
 
 
-async def mark_all_uploaded_as_cleared():
+def mark_all_uploaded_as_cleared():
     with closing_connection() as conn:
         with conn as cur:
             cur.execute(
@@ -94,7 +94,7 @@ async def mark_all_uploaded_as_cleared():
             )
 
 
-async def _get_one_token(table_name: str):
+def _get_one_token(table_name: str):
     with closing_connection() as conn:
         with conn as cur:
             result = cur.execute(f'SELECT token from {table_name}')
@@ -105,15 +105,15 @@ async def _get_one_token(table_name: str):
     return tokens[0]
 
 
-async def get_one_cashier_token():
-    return await _get_one_token('users')
+def get_one_cashier_token():
+    return _get_one_token('users')
 
 
-async def get_one_admin_token():
-    return await _get_one_token('admins')
+def get_one_admin_token():
+    return _get_one_token('admins')
 
 
-async def get_company_id_by_token(token: str) -> int:
+def get_company_id_by_token(token: str) -> int:
     with closing_connection() as conn:
         return conn.execute(
             'SELECT company_id FROM admins WHERE token=?',
@@ -121,17 +121,15 @@ async def get_company_id_by_token(token: str) -> int:
         ).fetchone()[0]
 
 
-async def add_user_into_db(email: str, token: str):
+def add_user_into_db(email: str, token: str):
     with closing_connection() as conn:
         with conn as cur:
             cur.execute('INSERT OR IGNORE INTO users (email) VALUES (?)', (email, ))
             cur.execute('UPDATE users SET token=? WHERE email=?', (token, email))
 
 
-async def add_admin_into_db(email: str, token: str):
+def add_admin_into_db(email: str, token: str):
     with closing_connection() as conn:
         with conn as cur:
             cur.execute('INSERT OR IGNORE INTO admins (email) VALUES (?)', (email, ))
             cur.execute('UPDATE admins SET token=? WHERE email=?', (token, email))
-
-

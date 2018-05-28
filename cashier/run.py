@@ -36,13 +36,13 @@ argv_pattern = re.compile('--(?P<key>.*?)=(?P<value>.*)')
 
 async def auth(email: str, password: str) -> str:
     token = await remote_auth(email, password)
-    await add_user_into_db(email, token)
+    add_user_into_db(email, token)
     return token
 
 
 async def upload_file(path: str) -> int:
     phones = []
-    existing_phones = set(await fetch_phones())
+    existing_phones = set(fetch_phones())
 
     with open(path, mode='r') as f:
         for line in f.readlines():
@@ -73,12 +73,12 @@ async def db_state() -> dict:
 
 async def start_uploading(cashier_token: str=None):
     if cashier_token is None:
-        cashier_token = await get_one_cashier_token()
+        cashier_token = get_one_cashier_token()
 
     if cashier_token is None:
         raise ValueError('Cashier token is not defined.')
 
-    phones = list(await fetch_phones(state=STATE_READY))
+    phones = list(fetch_phones(state=STATE_READY))
 
     async with ClientSession(headers={'Authorization': f'Bearer {cashier_token}'}) as client:
         tasks = [
@@ -98,15 +98,15 @@ async def _watch_phones(phones):
 
 async def admin_auth(email, password):
     token = await remote_admin_auth(email, password)
-    await add_admin_into_db(email, token) 
+    add_admin_into_db(email, token)
     return token
 
 
 async def remove_purchases(token=None):
     if token is None:
-        token = await get_one_admin_token()
+        token = get_one_admin_token()
 
-    purchases = list(await get_purchases_for_removal())
+    purchases = list(get_purchases_for_removal())
 
     tasks = [
         remove_purchases_task(token, purchases, feedback)
@@ -126,7 +126,7 @@ def run():
     loop = asyncio.get_event_loop()
 
     if method == 'create_db':
-        loop.run_until_complete(create_db())
+        create_db()
         return
 
     if method == 'upload_file':

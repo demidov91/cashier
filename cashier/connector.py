@@ -50,7 +50,7 @@ async def upload_task(
 
         try:
             purchase_id = await full_upload_phone(client, phone, feedback)
-            await mark_as_uploaded_or_cleared(phone, purchase_id)
+            mark_as_uploaded_or_cleared(phone, purchase_id)
         except Exception as e:
             await feedback(f'Unexpected error while uploading {phone}: {e}')
             continue
@@ -129,7 +129,7 @@ def _parse_intermediate_token(redirect_url: str):
 
 async def remove_purchases_task(token, purchases: List[int], feedback):
     async with ClientSession(headers={'Authorization': f'Bearer {token}'}) as client:
-        company_id = await get_company_id_by_token(token)
+        company_id = get_company_id_by_token(token)
 
         while True:
             await feedback('{} left to remove.'.format(len(purchases)))
@@ -144,7 +144,7 @@ async def remove_purchases_task(token, purchases: List[int], feedback):
                     await feedback(f'Operation {purchase_id} was not removed.')
 
                 else:
-                    await mark_as_cleared(purchase_id)
+                    mark_as_cleared(purchase_id)
                     await feedback(f'{purchase_id} is removed.')
             except Exception as e:
                 logger.exception(
