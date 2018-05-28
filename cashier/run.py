@@ -24,7 +24,6 @@ from cashier.connector import (
 )
 from cashier.constants import (
     STATE_READY,
-    STATE_UPLOADED,
     UPLOAD_CONCURRENCY,
 )
 
@@ -71,30 +70,23 @@ async def db_state() -> dict:
             ).fetchall())
 
 
-async def start_uploading(cashier_token: str=None, admin_token: str=None):
+async def start_uploading(cashier_token: str=None):
     if cashier_token is None:
         cashier_token = await get_one_cashier_token()
 
-    if admin_token is None:
-        admin_token = await get_one_admin_token()
-
     if cashier_token is None:
-        raise ValueError('Cashier token is not defined.')
-
-    if admin_token is None:
         raise ValueError('Cashier token is not defined.')
 
     phones = list(await fetch_phones(state=STATE_READY))
 
     async with ClientSession(headers={'Authorization': f'Bearer {cashier_token}'}) as client:
-        async with OperationRemover(token=admin_token, feedback=feedback) as remover:
-            tasks = [
-                upload_task(client, remover, phones, feedback)
-                for _ in range(UPLOAD_CONCURRENCY)
-            ]
-            watcher = asyncio.ensure_future(_watch_phones(phones))
-            await asyncio.gather(*tasks)
-            watcher.cancel()
+        tasks = [
+            upload_task(client, phones, feedback)
+            for _ in range(UPLOAD_CONCURRENCY)
+        ]
+        watcher = asyncio.ensure_future(_watch_phones(phones))
+        await asyncio.gather(*tasks)
+        watcher.cancel()
 
 
 async def _watch_phones(phones):
@@ -109,7 +101,7 @@ async def admin_auth(email, password):
     return token
 
 
-async def remove_purchases(token=None) -> int:
+async def remove_purchases(token=None):
     if token is None:
         token = await get_one_admin_token()
 

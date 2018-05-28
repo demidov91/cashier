@@ -85,6 +85,15 @@ async def mark_as_cleared(purchase_id: int):
             ))
 
 
+async def mark_all_uploaded_as_cleared():
+    with closing_connection() as conn:
+        with conn as cur:
+            cur.execute(
+                'UPDATE phones set state=? WHERE state=?',
+                (STATE_CLEARED, STATE_UPLOADED)
+            )
+
+
 async def _get_one_token(table_name: str):
     with closing_connection() as conn:
         with conn as cur:

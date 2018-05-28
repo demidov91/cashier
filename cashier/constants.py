@@ -7,7 +7,7 @@ LOGIN_URL = 'auth'
 USER_INFO_URL = 'shared-action'
 PURCHASE_URL = 'operations/phone-purchase'
 
-UPLOAD_CONCURRENCY = 5
+UPLOAD_CONCURRENCY = 4
 DEFAULT_REGISTRATION_AMOUNT = '0.01'
 
 ADMIN_SITE = 'https://api.udsgame.com/admin/'

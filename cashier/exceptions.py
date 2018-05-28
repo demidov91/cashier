@@ -1,0 +1,2 @@
+class UnexpectedStatusError(ValueError):
+    pass

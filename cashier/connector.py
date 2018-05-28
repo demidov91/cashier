@@ -22,6 +22,7 @@ from cashier.db import (
     get_company_id_by_token,
     mark_as_cleared,
 )
+from cashier.exceptions import UnexpectedStatusError
 
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,6 @@ async def auth(email: str, password: str) -> str:
 
 async def upload_task(
         client: ClientSession,
-        remover: 'OperationRemover',
         phones: list,
         feedback
 ):
@@ -54,8 +54,6 @@ async def upload_task(
         try:
             purchase_id = await full_upload_phone(client, phone, feedback)
             await mark_as_uploaded_or_cleared(phone, purchase_id)
-            # if purchase_id:
-            #     await remover.launch_purchase_removal(purchase_id)
         except Exception as e:
             await feedback(f'Unexpected error while uploading {phone}: {e}')
             continue
@@ -161,7 +159,7 @@ class OperationRemover:
            ADMIN_SITE + ADMIN_REMOVE_URL.format(self.company_id, purchase_id)
         ) as resp:
             if resp.status != 204:
-                raise ValueError(
+                raise UnexpectedStatusError(
                     f'Expected 204, got {resp.status} instead. '
                     f'{purchase_id} is not removed.'
                 )
@@ -178,7 +176,12 @@ class OperationRemover:
     async def complete_removal(self):
         for future in asyncio.as_completed(self.removal_tasks):
              try:
-                await future
+                 await future
+             except UnexpectedStatusError as e:
+                 await self.feedback(f"Can't remove a purchase: {e}")
+                 continue
+
              except Exception as e:
-                await self.feedback(f"Can't remove a purchase: {e}")
-                continue
+                 logger.exception(e)
+                 await self.feedback(f"Can't remove a purchase: {e}")
+                 continue
