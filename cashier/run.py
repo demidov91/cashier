@@ -20,11 +20,12 @@ from cashier.connector import (
     auth as remote_auth,
     admin_auth as remote_admin_auth,
     upload_task,
-    OperationRemover,
+    remove_purchases_task,
 )
 from cashier.constants import (
+    ADMIN_REMOVE_CONCURRENCY,
+    CASHIER_UPLOAD_CONCURRENCY,
     STATE_READY,
-    UPLOAD_CONCURRENCY,
 )
 
 
@@ -82,7 +83,7 @@ async def start_uploading(cashier_token: str=None):
     async with ClientSession(headers={'Authorization': f'Bearer {cashier_token}'}) as client:
         tasks = [
             upload_task(client, phones, feedback)
-            for _ in range(UPLOAD_CONCURRENCY)
+            for _ in range(CASHIER_UPLOAD_CONCURRENCY)
         ]
         watcher = asyncio.ensure_future(_watch_phones(phones))
         await asyncio.gather(*tasks)
@@ -105,10 +106,14 @@ async def remove_purchases(token=None):
     if token is None:
         token = await get_one_admin_token()
 
-    async with OperationRemover(feedback=feedback, token=token) as client:
-        for purchase_id in (await get_purchases_for_removal()):
-            await client.launch_purchase_removal(purchase_id)
-   
+    purchases = list(await get_purchases_for_removal())
+
+    tasks = [
+        remove_purchases_task(token, purchases, feedback)
+        for _ in range(ADMIN_REMOVE_CONCURRENCY)
+    ]
+    await asyncio.gather(*tasks)
+
 
 def run():
     method = sys.argv[1]

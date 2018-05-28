@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import urllib.parse
-from typing import Optional
+from typing import Optional, List
 
 from aiohttp import TCPConnector
 from aiohttp.client import ClientSession
@@ -130,58 +130,43 @@ def _parse_intermediate_token(redirect_url: str):
     return urllib.parse.parse_qs(query)['token'][0]
 
 
-class OperationRemover:
-    company_id = None  # type: int
+async def remove_purchases_task(token, purchases: List[int], feedback):
+    async with ClientSession(headers={'Authorization': f'Bearer {token}'}) as client:
+        company_id = await get_company_id_by_token(token)
 
-    def __init__(self, feedback, token: str):
-        self.feedback = feedback
-        self.token = token
-        self.client = ClientSession(
-            connector=TCPConnector(limit=2),    # Remote server doesn't work concurrently.
-            headers={'Authorization': f'Bearer {token}'},
-        )
-        self.removal_tasks = []
-        
-    async def __aenter__(self):
-        self.company_id = await get_company_id_by_token(self.token)
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
-        
-    async def close(self):
-        await self.complete_removal()
-        await self.client.close()
+        while True:
+            await feedback('{} left to remove.'.format(len(purchases)))
+            try:
+                purchase_id = purchases.pop()
+            except IndexError:
+                break
 
-    async def remove_purchase(self, purchase_id: int) -> int:
-        logger.debug('%d removal started.', purchase_id)
-        async with self.client.delete(
-           ADMIN_SITE + ADMIN_REMOVE_URL.format(self.company_id, purchase_id)
-        ) as resp:
-            if resp.status != 204:
-                raise UnexpectedStatusError(
-                    f'Expected 204, got {resp.status} instead. '
-                    f'{purchase_id} is not removed.'
+            try:
+                is_removed = await remove_purchase(client, company_id, purchase_id)
+                if not is_removed:
+                    await feedback(f'Operation {purchase_id} was not removed.')
+
+                else:
+                    await mark_as_cleared(purchase_id)
+                    await feedback(f'{purchase_id} is removed.')
+            except Exception as e:
+                logger.exception(
+                    "Exception while removing operation %s: %s",
+                    (purchase_id, e)
                 )
+                continue
 
-        await mark_as_cleared(purchase_id)
-        await self.feedback(f'{purchase_id} is removed.')
-        return purchase_id
 
-    async def launch_purchase_removal(self, purchase_id):
-        self.removal_tasks.append(
-            asyncio.ensure_future(self.remove_purchase(purchase_id))
-        )
+async def remove_purchase(client, company_id: int, purchase_id: int):
+    logger.debug('%d removal started.', purchase_id)
+    async with client.delete(
+       ADMIN_SITE + ADMIN_REMOVE_URL.format(company_id, purchase_id)
+    ) as resp:
+        if resp.status != 204:
+            logger.info(
+                f'Expected 204, got {resp.status} instead. '
+                f'{purchase_id} is not removed.'
+            )
+            return False
 
-    async def complete_removal(self):
-        for future in asyncio.as_completed(self.removal_tasks):
-             try:
-                 await future
-             except UnexpectedStatusError as e:
-                 await self.feedback(f"Can't remove a purchase: {e}")
-                 continue
-
-             except Exception as e:
-                 logger.exception(e)
-                 await self.feedback(f"Can't remove a purchase: {e}")
-                 continue
+        return True
