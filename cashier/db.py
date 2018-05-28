@@ -67,12 +67,12 @@ async def get_purchases_for_removal():
         ))
 
 
-async def mark_as_uploaded(phone: str, purchase_id: int):
+async def mark_as_uploaded_or_cleared(phone: str, purchase_id: int):
     with closing_connection() as conn:
         with conn as cur:
             return tuple(x[0] for x in cur.execute(
                 'UPDATE phones SET state=?, purchase_id=? WHERE phone=?',
-                (STATE_UPLOADED, purchase_id, phone)
+                (STATE_UPLOADED if purchase_id else STATE_CLEARED, purchase_id, phone)
             ))
 
 

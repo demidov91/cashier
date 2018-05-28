@@ -18,8 +18,8 @@ from cashier.constants import (
     ADMIN_TOKEN_URL,
 )
 from cashier.db import (
-    mark_as_uploaded, 
-    get_company_id_by_token, 
+    mark_as_uploaded_or_cleared,
+    get_company_id_by_token,
     mark_as_cleared,
 )
 
@@ -53,9 +53,9 @@ async def upload_task(
 
         try:
             purchase_id = await full_upload_phone(client, phone, feedback)
-            await mark_as_uploaded(phone, purchase_id)
-            if purchase_id:
-                await remover.launch_purchase_removal(purchase_id)
+            await mark_as_uploaded_or_cleared(phone, purchase_id)
+            # if purchase_id:
+            #     await remover.launch_purchase_removal(purchase_id)
         except Exception as e:
             await feedback(f'Unexpected error while uploading {phone}: {e}')
             continue
@@ -160,9 +160,11 @@ class OperationRemover:
         async with self.client.delete(
            ADMIN_SITE + ADMIN_REMOVE_URL.format(self.company_id, purchase_id)
         ) as resp:
-            logger.debug(await resp.read())
             if resp.status != 204:
-                raise ValueError(f'Expected 204, got {resp.status} instead.')
+                raise ValueError(
+                    f'Expected 204, got {resp.status} instead. '
+                    f'{purchase_id} is not removed.'
+                )
 
         await mark_as_cleared(purchase_id)
         await self.feedback(f'{purchase_id} is removed.')
