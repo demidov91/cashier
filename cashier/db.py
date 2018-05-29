@@ -163,14 +163,14 @@ def mark_all_ready_as_broken():
 def failed_to_upload(phone: str):
     with closing_connection() as conn:
         with conn as cur:
-            cur.execute('UPDATE phones SET failed_to_upload=True WHERE phone=?', (phone, ))
+            cur.execute('UPDATE phones SET failed_to_upload=1 WHERE phone=?', (phone, ))
 
 
 def failed_to_clear(purchase_id: int):
     with closing_connection() as conn:
         with conn as cur:
             cur.execute(
-                'UPDATE phones SET failed_to_clear=True WHERE purchase_id=?',
+                'UPDATE phones SET failed_to_clear=1 WHERE purchase_id=?',
                 (purchase_id, )
             )
 
